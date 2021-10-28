@@ -1,0 +1,115 @@
+version: "3.8"
+
+services:
+  ### Web server ###########################################
+  nginx:
+    container_name: web
+    build:
+      context: ./nginx
+      args:
+        PHP_UPSTREAM_PORT: 9000
+    ports:
+      - 80:80
+    environment:
+      HTTP_PORT: 80
+      PHP_UPSTREAM_PORT: 9000
+    depends_on:
+      - php-fpm
+    volumes:
+      - ${PROJECT_ROOT_PATH}:${PROJECT_CONTENTS_ROOT}
+      - ${NGINX_LOG_PATH}:/var/log/nginx
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/sites:/etc/nginx/sites-available
+    networks:
+      laranet:
+        ipv4_address: ${IP_ADDR_WEB_SERVER}
+
+  ### PHP-FPM ##############################################
+  php-fpm:
+    container_name: php
+    build:
+      context: ./php-fpm
+      args:
+        PHP_VERSION: ${PHP_VERSION}
+    expose:
+      - 9000
+    extra_hosts:
+      - example.jp:${IP_ADDR_WEB_SERVER}
+    volumes:
+      - ${PROJECT_ROOT_PATH}:${PROJECT_CONTENTS_ROOT}
+      - ./php-fpm/php.ini:/usr/local/etc/php/php.ini
+    networks:
+      - laranet
+
+  ### MySQL ################################################
+  mysql:
+    container_name: database
+    build:
+      context: ./mysql
+      args:
+        MYSQL_VERSION: ${MYSQL_VERSION}
+    environment:
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    ports:
+      - ${MYSQL_PORT}:3306
+    volumes:
+      - ${MYSQL_DATA_PATH}:/var/lib/mysql
+      - ${MYSQL_ENTRYPOINT_INITDB}:/docker-entrypoint-initdb.d
+      - ${MYSQL_LOG_PATH}:/var/log/mysql
+    networks:
+      - laranet
+
+  ### Redis ################################################
+  redis:
+    container_name: cache
+    build:
+      context: ./redis
+      args:
+        REDIS_VERSION: ${REDIS_VERSION}
+    ports:
+      - ${REDIS_PORT}:6379
+    volumes:
+      - ${REDIS_DATA_PATH}:/data
+      - ${REDIS_LOG_PATH}:/var/log/redis
+    networks:
+      - laranet
+
+  ### Workspace ############################################
+  workspace:
+    container_name: workspace
+    build:
+      context: ./workspace
+      args:
+        PHP_VERSION: ${PHP_VERSION}
+        WORKSPACE_USER: ${WORKSPACE_USER}
+        WORKSPACE_GROUP: ${WORKSPACE_GROUP}
+    links:
+      - mysql:database
+    extra_hosts:
+      - example.jp:${IP_ADDR_WEB_SERVER}
+    volumes:
+      - ${PROJECT_ROOT_PATH}:${PROJECT_CONTENTS_ROOT}
+    depends_on:
+      - mysql
+    tty: true
+    networks:
+      - laranet
+
+### Network drivers ######################################
+networks:
+  laranet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${IP_SUBNET_CIDR}
+          gateway: ${IP_GATEWAY_ADDR}
+
+### Volume drivers #######################################
+volumes:
+  mysql:
+    driver: local
+  redis:
+    driver: local
